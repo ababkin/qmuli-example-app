@@ -1,0 +1,33 @@
+name: qmuli-example-app
+version: "0.0.1"
+description: qmuli example app
+maintainer: Alex Babkin
+stability: experimental
+license: MIT
+
+default-extensions:
+  - NoImplicitPrelude
+  - OverloadedStrings
+    
+extra-source-files:
+  - README.md
+  - stack.yaml
+
+dependencies:
+  - aeson
+  - amazonka-dynamodb
+  - base
+  - data-default
+  - hashable
+  - lens
+  - qmuli
+  - protolude
+  - text
+  - unordered-containers
+
+
+executables:
+  qmuli-example-app:
+    main: Main.hs
+    source-dirs: app
+
