@@ -1,6 +1,6 @@
-name: qmuli-example-app
+name: realty-data-collect
 version: "0.0.1"
-description: qmuli example app
+description: Realty data collection
 maintainer: Alex Babkin
 stability: experimental
 license: MIT
@@ -15,19 +15,28 @@ extra-source-files:
 
 dependencies:
   - aeson
-  - amazonka-dynamodb
   - base
   - data-default
   - hashable
+  - http-client
+  - http-client-tls
   - lens
   - qmuli
   - protolude
+  - scientific
+  - servant
+  - servant-client
   - text
   - unordered-containers
 
+library:
+  source-dirs: lib
 
 executables:
-  qmuli-example-app:
+  realty-data-collect:
     main: Main.hs
     source-dirs: app
+    dependencies:
+      - realty-data-collect
+    
 
