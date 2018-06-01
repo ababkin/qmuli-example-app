@@ -31,7 +31,7 @@ packages:
     - core
   extra-dep: true
 
-    
+
 extra-deps:
   - aeson-1.3.0.0
 

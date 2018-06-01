@@ -15,8 +15,10 @@ import           Data.Scientific
 import           GHC.Generics
 import           Network.HTTP.Client (defaultManagerSettings, newManager)
 import           Protolude
+import           Realtor.Item
 import           Servant.API
 import           Servant.Client
+
 
 {-
 curl 'https://www.realtor.com/search_result.json' \
@@ -62,6 +64,18 @@ data SearchCriteria = SearchCriteria {
   deriving (Show, Generic)
 
 instance ToJSON SearchCriteria
+
+instance Default SearchCriteria where
+  def = SearchCriteria {
+            search_criteria = "Madison_NJ"
+          , city = "Madison"
+          , state = "NJ"
+          , facets = def
+          , search_controller = "Search::RecentlySoldController"
+          , types = ["property"]
+          , page_size = 10
+          , page = 1
+          }
 
 
 
@@ -178,22 +192,7 @@ instance FromJSON QueryResponse where
 
   -}
 
-data Item = Item {
-    id              :: Text
-  , bed             :: Maybe Int
-  , bath            :: Maybe Text
-  , lotSize         :: Int
-  , price           :: Int
-  , sqft            :: Int
-  , address         :: Text
-  , city            :: Text
-  , isForeclosure   :: Bool
-  , propertyType    :: Text
-  , isStatusPending :: Maybe Bool
-  }
-  deriving (Show, Generic)
 
-instance FromJSON Item
 
 {-
 
