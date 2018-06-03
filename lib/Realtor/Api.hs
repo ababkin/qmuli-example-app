@@ -28,9 +28,6 @@ curl 'https://www.realtor.com/search_result.json' \
   --compressed | jq .
 -}
 
-
-
-
 data Facets = Facets {
     beds_min         :: Maybe Text
   , beds_max         :: Maybe Text
@@ -56,6 +53,7 @@ data SearchCriteria = SearchCriteria {
   , city              :: Text
   , state             :: Text
   , facets            :: Facets
+  , search_type       :: Text
   , search_controller :: Text
   , types             :: [Text]
   , page_size         :: Int
@@ -71,13 +69,12 @@ instance Default SearchCriteria where
           , city = "Madison"
           , state = "NJ"
           , facets = def
+          , search_type = "city"
           , search_controller = "Search::RecentlySoldController"
           , types = ["property"]
-          , page_size = 10
+          , page_size = 100
           , page = 1
           }
-
-
 
 {-
   "is_saved": "false",
