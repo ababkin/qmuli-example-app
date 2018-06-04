@@ -1,4 +1,5 @@
 {-# LANGUAGE NamedFieldPuns      #-}
+{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -8,6 +9,7 @@ import           Control.Lens
 import           Control.Monad               (void)
 import qualified Data.Aeson                  as A
 import qualified Data.ByteString.Base64      as B64
+import qualified Data.Csv                    as Csv
 import           Data.Default                (def)
 import           Data.Hashable               (hash)
 import qualified Data.Text                   as T
@@ -24,7 +26,7 @@ import           Qi.Config.Identifier        (S3BucketId)
 import           Qi.Program.Config.Interface (ConfigProgram, cwEventLambda,
                                               s3Bucket)
 import           Qi.Program.Lambda.Interface (CwLambdaProgram, LambdaProgram,
-                                              getS3ObjectContent,
+                                              getS3ObjectContent, listS3Objects,
                                               putS3ObjectContent, runServant,
                                               say, sleep)
 import           Qi.Util                     (success)
@@ -62,20 +64,56 @@ main = withConfig config
     config :: ConfigProgram ()
     config = do
 
-      let ruleProfile = ScheduledEventProfile "cron(* * * * ? *)" -- every minute
+      let fetchCron = ScheduledEventProfile "cron(* * * * ? *)" -- every minute
 
       recentlySoldId <- s3Bucket "recently-sold"
+      void $ cwEventLambda "fetch" fetchCron (fetchLambda recentlySoldId) $ def
+                                                                            & lpMemorySize .~ M512
+                                                                            & lpTimeoutSeconds .~ 300
 
-      void $ cwEventLambda "myEventLambda" ruleProfile (eventLambda recentlySoldId) $ def
-                                                                                      & lpMemorySize .~ M512
-                                                                                      & lpTimeoutSeconds .~ 300
+      let summaryCron = ScheduledEventProfile "cron(0 * * * ? *)" -- every minute
+      summaryId <- s3Bucket "summary"
 
-    eventLambda
+      void $ cwEventLambda "summary" summaryCron (summaryLambda recentlySoldId summaryId) $ def
+                                                                            & lpMemorySize .~ M512
+                                                                            & lpTimeoutSeconds .~ 300
+
+
+    summaryLambda
+      :: S3BucketId
+      -> S3BucketId
+      -> CwLambdaProgram
+    summaryLambda recentlySoldBuckedId summaryBucketId _ = do
+      objs <- listS3Objects recentlySoldBuckedId
+      -- say $ fromMaybe "empty list" $ show <$> head objs
+      -- cont <- getS3ObjectContent $ (S3Object recentlySoldBuckedId $ S3Key "LTE0Mjk3MjE2MjM3OTYzMzgwNDU=")
+      -- say $ toS cont
+      -- sleep 1500000
+      (items :: [Item]) <- catMaybes <$> traverse (map A.decode . getS3ObjectContent) objs
+
+      let headers = [
+              "id"
+            , "beds"
+            , "lotSize"
+            , "price"
+            , "sqft"
+            , "address"
+            , "city"
+            , "state"
+            , "zip"
+            , "isForeclosure"
+            , "propertyType"
+            , "isStatusPending"
+            , "url"
+            ]
+
+      void $ putS3ObjectContent (S3Object summaryBucketId $ S3Key "summary.csv") $ Csv.encodeByName headers items
+      success "success!"
+
+    fetchLambda
       :: S3BucketId
       -> CwLambdaProgram
-    eventLambda bucketId _ = do
-      -- emit log messages that end up in the appropriate cloudwatch group/stream
-
+    fetchLambda bucketId _ = do
 
       for_ searchLocations $ \sl@SearchLocation{ city, state } -> do
         let search_criteria = searchCriteria sl

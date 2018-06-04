@@ -17,6 +17,7 @@ dependencies:
   - aeson
   - base
   - base64-bytestring
+  - cassava
   - data-default
   - hashable
   - http-client
