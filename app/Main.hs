@@ -30,11 +30,12 @@ import           Qi.Program.Lambda.Interface (CwLambdaProgram, LambdaProgram,
                                               putS3ObjectContent, runServant,
                                               say, sleep)
 import           Qi.Util                     (success)
-import           Realtor.Api                 (QueryResponse (..),
-                                              SearchCriteria, search)
 import qualified Realtor.Api                 as Api
 import           Realtor.Item                (Item (Item))
 import qualified Realtor.Item                as Item
+import           Realtor.Search              (QueryResponse (..), SearchParams,
+                                              searchParams)
+import qualified Realtor.Search              as Search
 import           Servant.Client
 
 
@@ -43,8 +44,8 @@ data SearchLocation = SearchLocation {
   , state :: Text
   }
 
-searchCriteria :: SearchLocation -> Text
-searchCriteria SearchLocation{ city, state } = T.replace " " "-" $ city <> "_" <> state
+searchCriteriaLiteral :: SearchLocation -> Text
+searchCriteriaLiteral SearchLocation{ city, state } = T.replace " " "-" $ city <> "_" <> state
 
 searchLocations :: [SearchLocation]
 searchLocations = [ SearchLocation "Madison" "NJ"
@@ -116,12 +117,10 @@ main = withConfig config
     fetchLambda bucketId _ = do
 
       for_ searchLocations $ \sl@SearchLocation{ city, state } -> do
-        let search_criteria = searchCriteria sl
-        persistedPages <- persistPages def{ Api.city = city
-                                          , Api.state = state
-                                          , Api.search_criteria = search_criteria
-                                          } 1
-        say $ "persisted " <> show persistedPages <> " pages for: '" <> search_criteria <> "'"
+        let criteria = searchCriteriaLiteral sl
+            params = searchParams criteria "Search::RecentlySoldController"
+        persistedPages <- persistPages params 1
+        say $ "persisted " <> show persistedPages <> " pages for: '" <> criteria <> "'"
 
       success "success!"
 
@@ -132,7 +131,7 @@ main = withConfig config
         persistPages criteria page = do
           result <- runServant tlsManagerSettings
                         (BaseUrl Http "realtor.com" 80 "")
-                        (search (Just contentType) (Just accept) criteria{ Api.page = page })
+                        (Api.recentlySold (Just contentType) (Just accept) criteria{ Search.page = page })
           case result of
             Left err -> do
               say $ "Error: " <> show err

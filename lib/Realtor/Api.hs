@@ -16,8 +16,56 @@ import           GHC.Generics
 import           Network.HTTP.Client (defaultManagerSettings, newManager)
 import           Protolude
 import           Realtor.Item
+import           Realtor.Search
 import           Servant.API
 import           Servant.Client
+
+
+
+
+type API = ForSale :<|> RecentlySold
+
+type ForSale =
+    "search_result.json"
+  :> Header "content-type" Text
+  :> Header "accept" Text
+  :> ReqBody '[JSON] SearchParams :> Post '[JSON] QueryResponse
+
+type RecentlySold =
+    "pagination_result.json"
+  :> Header "content-type" Text
+  :> Header "accept" Text
+  :> ReqBody '[JSON] SearchParams :> Post '[JSON] QueryResponse
+
+
+
+api :: Proxy API
+api = Proxy
+
+forSale
+  :: Maybe Text
+  -> Maybe Text
+  -> SearchParams
+  -> ClientM QueryResponse
+
+recentlySold
+  :: Maybe Text
+  -> Maybe Text
+  -> SearchParams
+  -> ClientM QueryResponse
+
+forSale :<|> recentlySold = client api
+
+
+-- | Simple data type to represent the target of HTTP requests
+--   for servant's automatically-generated clients.
+data BaseUrl = BaseUrl
+  { baseUrlScheme :: Scheme -- ^ URI scheme to use
+  , baseUrlHost   :: [Char]   -- ^ host (eg "haskell.org")
+  , baseUrlPort   :: Int      -- ^ port (eg 80)
+  , baseUrlPath   :: [Char]   -- ^ path (eg "/a/b/c")
+  }
+
 
 
 {-
@@ -28,90 +76,6 @@ curl 'https://www.realtor.com/search_result.json' \
   --compressed | jq .
 -}
 
-data Facets = Facets {
-    beds_min         :: Maybe Text
-  , beds_max         :: Maybe Text
-  , baths_min        :: Maybe Text
-  , baths_max        :: Maybe Text
-  , price_min        :: Maybe Text
-  , price_max        :: Maybe Text
-  , acre_min         :: Maybe Text
-  , acre_max         :: Maybe Text
-  , foreclosure      :: Maybe Bool
-  , days_on_market   :: Maybe Int
-  , new_construction :: Maybe Bool
-  }
-  deriving (Show, Generic)
-
-instance ToJSON Facets
-
-instance Default Facets where
-  def = Facets def def def def def def def def def def def
-
-data SearchCriteria = SearchCriteria {
-    search_criteria   :: Text
-  , city              :: Text
-  , state             :: Text
-  , facets            :: Facets
-  , search_type       :: Text
-  , search_controller :: Text
-  , types             :: [Text]
-  , page_size         :: Int
-  , page              :: Int
-  }
-  deriving (Show, Generic)
-
-instance ToJSON SearchCriteria
-
-instance Default SearchCriteria where
-  def = SearchCriteria {
-            search_criteria = "Madison_NJ"
-          , city = "Madison"
-          , state = "NJ"
-          , facets = def
-          , search_type = "city"
-          , search_controller = "Search::RecentlySoldController"
-          , types = ["property"]
-          , page_size = 100
-          , page = 1
-          }
-
-{-
-  "is_saved": "false",
-  "search_id": null,
-  "seo_url": "/soldhomeprices/Nashua_NH/beds-3?pgsz=80&pos=42.763275,-71.579493,42.790491,-71.412467,13",
-  "client_polygon": null,
-  "results": {
-    "property": {
-      "type": "property",
-      "count": 78,
-      "total": 79,
-      "items": {
-        "3717832792": {
-...
-        }
-      }
-    }
-  }
-  -}
-data QueryResponse = QueryResponse {
-    total :: Int
-  , items :: [Item]
-  } deriving (Show)
-
-instance FromJSON QueryResponse where
-  parseJSON = withObject "QueryResponse" $ \ qr -> do
-    results <- qr .: "results"
-    property <- results .: "property"
-    (Object items') <- property .: "items"
-    (Number total') <- property .: "total"
-    case floatingOrInteger total' of
-      Right (total'' :: Integer) ->
-        QueryResponse
-          <$> pure (fromIntegral total'')
-          <*> (HM.elems <$> traverse parseJSON items')
-      Left (_f :: Double) ->
-        fail "encountered float in 'total' pagination field"
 
 {-
         "3717832792": {
@@ -203,34 +167,4 @@ curl 'https://www.realtor.com/search_result.json' \
 
 
 -- https://www.realtor.com/search_result.json
-
-type API =
-    "pagination_result.json"
-  :> Header "content-type" Text
-  :> Header "accept" Text
-  :> ReqBody '[JSON] SearchCriteria :> Post '[JSON] QueryResponse
-
-
-
-api :: Proxy API
-api = Proxy
-
-search
-  :: Maybe Text
-  -> Maybe Text
-  -> SearchCriteria
-  -> ClientM QueryResponse
-search = client api
-
-
--- | Simple data type to represent the target of HTTP requests
---   for servant's automatically-generated clients.
-data BaseUrl = BaseUrl
-  { baseUrlScheme :: Scheme -- ^ URI scheme to use
-  , baseUrlHost   :: [Char]   -- ^ host (eg "haskell.org")
-  , baseUrlPort   :: Int      -- ^ port (eg 80)
-  , baseUrlPath   :: [Char]   -- ^ path (eg "/a/b/c")
-  }
-
-
 
