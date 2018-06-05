@@ -8,13 +8,10 @@ module Main where
 import           Control.Lens
 import           Control.Monad               (void)
 import qualified Data.Aeson                  as A
-import qualified Data.ByteString.Base64      as B64
 import qualified Data.Csv                    as Csv
 import           Data.Default                (def)
 import           Data.Hashable               (hash)
 import qualified Data.Text                   as T
-import           Network.HTTP.Client
-import           Network.HTTP.Client.TLS     (tlsManagerSettings)
 import           Protolude                   hiding (state)
 import           Qi                          (withConfig)
 import           Qi.Config.AWS.CW            (CwEventsRuleProfile (ScheduledEventProfile))
@@ -28,7 +25,7 @@ import           Qi.Program.Config.Interface (ConfigProgram, cwEventLambda,
 import           Qi.Program.Lambda.Interface (CwLambdaProgram, LambdaProgram,
                                               getS3ObjectContent, listS3Objects,
                                               putS3ObjectContent, runServant,
-                                              say, sleep)
+                                              say)
 import           Qi.Util                     (success)
 import qualified Realtor.Api                 as Api
 import           Realtor.Item                (Item (Item))
@@ -36,7 +33,7 @@ import qualified Realtor.Item                as Item
 import           Realtor.Search              (QueryResponse (..), SearchParams,
                                               searchParams)
 import qualified Realtor.Search              as Search
-import           Servant.Client
+import           Realtor.Util
 
 
 data SearchLocation = SearchLocation {
@@ -86,10 +83,6 @@ main = withConfig config
       -> CwLambdaProgram
     summaryLambda recentlySoldBuckedId summaryBucketId _ = do
       objs <- listS3Objects recentlySoldBuckedId
-      -- say $ fromMaybe "empty list" $ show <$> head objs
-      -- cont <- getS3ObjectContent $ (S3Object recentlySoldBuckedId $ S3Key "LTE0Mjk3MjE2MjM3OTYzMzgwNDU=")
-      -- say $ toS cont
-      -- sleep 1500000
       (items :: [Item]) <- catMaybes <$> traverse (map A.decode . getS3ObjectContent) objs
 
       let headers = [
@@ -111,6 +104,8 @@ main = withConfig config
       void $ putS3ObjectContent (S3Object summaryBucketId $ S3Key "summary.csv") $ Csv.encodeByName headers items
       success "success!"
 
+
+
     fetchLambda
       :: S3BucketId
       -> CwLambdaProgram
@@ -119,40 +114,10 @@ main = withConfig config
       for_ searchLocations $ \sl@SearchLocation{ city, state } -> do
         let criteria = searchCriteriaLiteral sl
             params = searchParams criteria "Search::RecentlySoldController"
-        persistedPages <- persistPages params 1
+        persistedPages <- persistPages params (persistItem bucketId) 1
         say $ "persisted " <> show persistedPages <> " pages for: '" <> criteria <> "'"
 
       success "success!"
 
-      where
-        contentType = "application/json"
-        accept      = "application/json, text/javascript, */*; q=0.01"
-
-        persistPages criteria page = do
-          result <- runServant tlsManagerSettings
-                        (BaseUrl Http "realtor.com" 80 "")
-                        (Api.recentlySold (Just contentType) (Just accept) criteria{ Search.page = page })
-          case result of
-            Left err -> do
-              say $ "Error: " <> show err
-              pure $ page - 1
-            Right (QueryResponse{ items }) -> do
-              traverse_ persist items
-              if null items
-                then pure $ page - 1
-                else do
-                  sleep 500000
-                  persistPages criteria $ page + 1
-
-        persist
-          :: Item
-          -> LambdaProgram ()
-        persist item@Item { Item.address  = address
-                          , Item.city     = city
-                          , Item.state    = state
-                          } =
-          void $ putS3ObjectContent (S3Object bucketId $ S3Key key) $ A.encode item
-          where
-            key = toS . B64.encode . show $ hash (address, city, state)
 
 
