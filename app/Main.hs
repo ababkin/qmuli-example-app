@@ -1,5 +1,4 @@
 {-# LANGUAGE NamedFieldPuns      #-}
-{-# LANGUAGE OverloadedLists     #-}
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -62,62 +61,74 @@ main = withConfig config
     config :: ConfigProgram ()
     config = do
 
-      let fetchCron = ScheduledEventProfile "cron(* * * * ? *)" -- every minute
+      let fetchRecentlySoldCron = ScheduledEventProfile "cron(1 * * * ? *)"
 
-      recentlySoldId <- s3Bucket "recently-sold"
-      void $ cwEventLambda "fetch" fetchCron (fetchLambda recentlySoldId) $ def
+      recentlySoldBucketId <- s3Bucket "recently-sold"
+      forSaleBucketId <- s3Bucket "for-sale"
+      outputBucketId <- s3Bucket "output"
+
+      cwEventLambda "fetchRecentlySold" fetchRecentlySoldCron (fetchRecentlySoldLambda recentlySoldBucketId) $ def
                                                                             & lpMemorySize .~ M512
                                                                             & lpTimeoutSeconds .~ 300
 
-      let summaryCron = ScheduledEventProfile "cron(0 * * * ? *)" -- every minute
-      summaryId <- s3Bucket "summary"
+      let fetchForSaleCron = ScheduledEventProfile "cron(2 * * * ? *)"
 
-      void $ cwEventLambda "summary" summaryCron (summaryLambda recentlySoldId summaryId) $ def
+      cwEventLambda "fetchForSale" fetchForSaleCron (fetchForSaleLambda forSaleBucketId) $ def
                                                                             & lpMemorySize .~ M512
                                                                             & lpTimeoutSeconds .~ 300
 
 
-    summaryLambda
+      let extractCron = ScheduledEventProfile "cron(0 * * * ? *)"
+
+      void $ cwEventLambda "extractRecentlySold" extractCron (extractItemsLambda recentlySoldBucketId outputBucketId "recently-sold.csv")
+              $ def
+                & lpMemorySize .~ M512
+                & lpTimeoutSeconds .~ 300
+
+      void $ cwEventLambda "extractForSale" extractCron (extractItemsLambda forSaleBucketId outputBucketId "for-sale.csv")
+              $ def
+                & lpMemorySize .~ M512
+                & lpTimeoutSeconds .~ 300
+
+
+    extractItemsLambda
       :: S3BucketId
       -> S3BucketId
+      -> Text
       -> CwLambdaProgram
-    summaryLambda recentlySoldBuckedId summaryBucketId _ = do
-      objs <- listS3Objects recentlySoldBuckedId
+    extractItemsLambda fromBuckedId toBucketId filename _ = do
+      objs <- listS3Objects fromBuckedId
       (items :: [Item]) <- catMaybes <$> traverse (map A.decode . getS3ObjectContent) objs
 
-      let headers = [
-              "id"
-            , "beds"
-            , "lotSize"
-            , "price"
-            , "sqft"
-            , "address"
-            , "city"
-            , "state"
-            , "zip"
-            , "isForeclosure"
-            , "propertyType"
-            , "isStatusPending"
-            , "url"
-            ]
-
-      void $ putS3ObjectContent (S3Object summaryBucketId $ S3Key "summary.csv") $ Csv.encodeByName headers items
+      void $ putS3ObjectContent (S3Object toBucketId $ S3Key filename) $ Csv.encodeByName Item.headers items
       success "success!"
 
 
 
-    fetchLambda
+    fetchRecentlySoldLambda
       :: S3BucketId
       -> CwLambdaProgram
-    fetchLambda bucketId _ = do
+    fetchRecentlySoldLambda bucketId _ = do
 
       for_ searchLocations $ \sl@SearchLocation{ city, state } -> do
         let criteria = searchCriteriaLiteral sl
             params = searchParams criteria "Search::RecentlySoldController"
-        persistedPages <- persistPages params (persistItem bucketId) 1
+        persistedPages <- persistPages Api.recentlySold params (persistItem bucketId) 1
         say $ "persisted " <> show persistedPages <> " pages for: '" <> criteria <> "'"
 
       success "success!"
 
 
+    fetchForSaleLambda
+      :: S3BucketId
+      -> CwLambdaProgram
+    fetchForSaleLambda bucketId _ = do
+
+      for_ searchLocations $ \sl@SearchLocation{ city, state } -> do
+        let criteria = searchCriteriaLiteral sl
+            params = searchParams criteria "Search::PropertiesController"
+        persistedPages <- persistPages Api.forSale params (persistItem bucketId) 1
+        say $ "persisted " <> show persistedPages <> " pages for: '" <> criteria <> "'"
+
+      success "success!"
 

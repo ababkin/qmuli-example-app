@@ -30,6 +30,7 @@ dependencies:
   - servant-client
   - text
   - unordered-containers
+  - vector
 
 library:
   source-dirs: lib

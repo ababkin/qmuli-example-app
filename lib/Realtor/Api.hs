@@ -26,7 +26,7 @@ import           Servant.Client
 type API = ForSale :<|> RecentlySold
 
 type ForSale =
-    "search_result.json"
+    "pagination_result.json"
   :> Header "content-type" Text
   :> Header "accept" Text
   :> ReqBody '[JSON] SearchParams :> Post '[JSON] QueryResponse
@@ -66,6 +66,16 @@ data BaseUrl = BaseUrl
   , baseUrlPath   :: [Char]   -- ^ path (eg "/a/b/c")
   }
 
+
+
+
+{-
+curl 'https://www.realtor.com/pagination_result.json' \
+  -H 'content-type: application/json' \
+  -H 'accept: application/json, text/javascript, */*; q=0.01' \
+  --data-binary '{"search_criteria":"Madison_NJ","discovery_mode":false,"postal":null,"sort":null,"position":null,"facets":{"beds_min":"3","beds_max":"","baths_min":null,"baths_max":null,"price_min":null,"price_max":null,"prop_type":"","sqft_min":null,"sqft_max":null,"acre_min":null,"acre_max":null,"lot_unit":null,"age_max":null,"age_min":null,"radius":null,"pets":null,"days_on_market":null,"open_house":null,"show_listings":null,"pending":null,"foreclosure":null,"new_construction":null,"multi_search":{},"include_pending_contingency":false,"features_hash":[],"prop_types":[""]},"search_controller":"Search::PropertiesController","neighborhood":null,"street":null,"searchType":"city","school":null,"types":["property"],"searchFacetsToDTM":["beds_min"],"searchFeaturesToDTM":[],"page_size":80,"viewport_height":216,"pin_height":25}' \
+  --compressed | jq .
+-}
 
 
 {-

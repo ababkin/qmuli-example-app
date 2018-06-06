@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric         #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedLists       #-}
 {-# LANGUAGE RecordWildCards       #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 
@@ -7,17 +8,17 @@ module Realtor.Item where
 
 import           Data.Aeson   hiding ((.=))
 import           Data.Csv
+import           Data.Vector  (Vector)
 import           GHC.Generics
 import           Protolude    hiding (state, zip)
 
-
 data Item = Item {
     id              :: Text
-  , bed             :: Maybe Int
+  , bed             :: Maybe Text
   , bath            :: Maybe Text
-  , lotSize         :: Int
-  , price           :: Int
-  , sqft            :: Int
+  , lotSize         :: Maybe Int
+  , price           :: Maybe Int
+  , sqft            :: Maybe Int
   , address         :: Text
   , city            :: Text
   , state           :: Text
@@ -53,6 +54,24 @@ instance ToNamedRecord Item where
         , "isStatusPending" .= fromMaybeBool isStatusPending
         , "url" .= ldpUrl
         ]
+
+headers :: Vector ByteString
+headers = [
+    "id"
+  , "beds"
+  , "lotSize"
+  , "price"
+  , "sqft"
+  , "address"
+  , "city"
+  , "state"
+  , "zip"
+  , "isForeclosure"
+  , "propertyType"
+  , "isStatusPending"
+  , "url"
+  ]
+
 
 
 fromBool :: Bool -> Text

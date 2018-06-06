@@ -11,7 +11,6 @@ import           Qi.Config.AWS.S3            (S3Key (S3Key),
 import           Qi.Config.Identifier        (S3BucketId)
 import           Qi.Program.Lambda.Interface (LambdaProgram, putS3ObjectContent,
                                               runServant, say, sleep)
-import qualified Realtor.Api                 as Api
 import           Realtor.Item                (Item (Item))
 import qualified Realtor.Item                as Item
 import           Realtor.Search              (QueryResponse (..), SearchParams)
@@ -33,14 +32,15 @@ port = 80
 
 
 persistPages
-  :: SearchParams
+  :: (Maybe Text -> Maybe Text -> SearchParams -> ClientM QueryResponse)
+  -> SearchParams
   -> (Item -> LambdaProgram ())
   -> Int
   -> LambdaProgram Int
-persistPages params persist page = do
+persistPages api params persist page = do
   result <- runServant tlsManagerSettings
                 (BaseUrl Http host port "")
-                (Api.recentlySold (Just contentType) (Just accept) params{ Search.page = page })
+                (api (Just contentType) (Just accept) params{ Search.page = page })
   case result of
     Left err -> do
       say $ "Error: " <> show err
@@ -51,7 +51,7 @@ persistPages params persist page = do
         then pure $ page - 1
         else do
           sleep 500000
-          persistPages params persist $ page + 1
+          persistPages api params persist $ page + 1
 
 persistItem
   :: S3BucketId
