@@ -15,6 +15,7 @@ extra-source-files:
 
 dependencies:
   - aeson
+  - attoparsec
   - base
   - base64-bytestring
   - cassava

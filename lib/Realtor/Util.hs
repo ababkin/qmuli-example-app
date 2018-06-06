@@ -9,8 +9,9 @@ import           Protolude                   hiding (state)
 import           Qi.Config.AWS.S3            (S3Key (S3Key),
                                               S3Object (S3Object))
 import           Qi.Config.Identifier        (S3BucketId)
-import           Qi.Program.Lambda.Interface (LambdaProgram, putS3ObjectContent,
-                                              runServant, say, sleep)
+import           Qi.Program.Lambda.Interface (LambdaProgram, getS3ObjectContent,
+                                              putS3ObjectContent, runServant,
+                                              say, sleep)
 import           Realtor.Item                (Item (Item))
 import qualified Realtor.Item                as Item
 import           Realtor.Search              (QueryResponse (..), SearchParams)
@@ -60,8 +61,14 @@ persistItem
 persistItem bucketId item@Item { Item.address  = address
                   , Item.city     = city
                   , Item.state    = state
-                  } =
-  void $ putS3ObjectContent (S3Object bucketId $ S3Key key) $ A.encode item
+                  } = do
+  let s3Obj = S3Object bucketId $ S3Key key
+  result <- getS3ObjectContent s3Obj
+  case result of
+    Right _ ->
+      pass -- s3 object already present
+    Left _ ->
+      void $ putS3ObjectContent s3Obj $ A.encode item
   where
     key = toS . B64.encode . show $ hash (address, city, state)
 
