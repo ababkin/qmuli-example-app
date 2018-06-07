@@ -20,6 +20,7 @@ dependencies:
   - base64-bytestring
   - cassava
   - data-default
+  - extra
   - hashable
   - http-client
   - http-client-tls

@@ -21,41 +21,22 @@ import           Servant.API
 import           Servant.Client
 
 
-
-
-type API = ForSale :<|> RecentlySold
-
-type ForSale =
+type Api =
     "pagination_result.json"
   :> Header "content-type" Text
   :> Header "accept" Text
   :> ReqBody '[JSON] SearchParams :> Post '[JSON] QueryResponse
 
-type RecentlySold =
-    "pagination_result.json"
-  :> Header "content-type" Text
-  :> Header "accept" Text
-  :> ReqBody '[JSON] SearchParams :> Post '[JSON] QueryResponse
-
-
-
-api :: Proxy API
+api :: Proxy Api
 api = Proxy
 
-forSale
+fetch
   :: Maybe Text
   -> Maybe Text
   -> SearchParams
   -> ClientM QueryResponse
 
-recentlySold
-  :: Maybe Text
-  -> Maybe Text
-  -> SearchParams
-  -> ClientM QueryResponse
-
-forSale :<|> recentlySold = client api
-
+fetch = client api
 
 -- | Simple data type to represent the target of HTTP requests
 --   for servant's automatically-generated clients.
