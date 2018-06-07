@@ -92,71 +92,110 @@ main = withConfig config
           defaultLambdaProfile = def & lpMemorySize     .~ M512
                                      & lpTimeoutSeconds .~ 300
 
-      recentlySoldBucketId  <- s3Bucket "recently-sold"
-      forSaleBucketId       <- s3Bucket "for-sale"
-      outputBucketId        <- s3Bucket "output"
+      recentlySoldBucketId      <- s3Bucket "recently-sold"
+      forSaleBucketId           <- s3Bucket "for-sale"
+      recentlySoldPagesBucketId <- s3Bucket "recently-sold-pages"
+      forSalePagesBucketId      <- s3Bucket "for-sale-pages"
+      outputBucketId            <- s3Bucket "output"
 
-      fetchRecentlySoldLocationLambdaId <- genericLambda
+--fetching
+
+      fetchRecentlySoldLocationId <- genericLambda
                                         "fetchRecentlySoldLocation"
-                                        (fetchLocationLambda recentlySoldBucketId "Search::RecentlySoldController")
+                                        (fetchLocation recentlySoldBucketId "Search::RecentlySoldController")
                                         defaultLambdaProfile
       cwEventLambda
         "fetchRecentlySold"
         fetchRecentlySoldCron
-        (fetchLambda fetchRecentlySoldLocationLambdaId)
+        (fetch fetchRecentlySoldLocationId)
         defaultLambdaProfile
 
-      fetchForSaleLocationLambdaId <- genericLambda
+      fetchForSaleLocationId <- genericLambda
                                 "fetchForSaleLocation"
-                                (fetchLocationLambda forSaleBucketId "Search::PropertiesController")
+                                (fetchLocation forSaleBucketId "Search::PropertiesController")
                                 defaultLambdaProfile
       cwEventLambda
         "fetchForSale"
         fetchForSaleCron
-        (fetchLambda fetchForSaleLocationLambdaId)
+        (fetch fetchForSaleLocationId)
         defaultLambdaProfile
 
+
+      extractRecentlySoldPageId <- genericLambda
+                                "extractRecentlySoldPage"
+                                (extractPage recentlySoldPagesBucketId)
+                                defaultLambdaProfile
+
+-- extraction
 
       cwEventLambda
         "extractRecentlySold"
         extractCron
-        (extractItemsLambda recentlySoldBucketId outputBucketId "recently-sold.csv")
+        (extractItems recentlySoldBucketId extractRecentlySoldPageId)
         defaultLambdaProfile
+
+
+      extractForSalePageId <- genericLambda
+                                "extractForSalePage"
+                                (extractPage forSalePagesBucketId)
+                                defaultLambdaProfile
 
       cwEventLambda
         "extractForSale"
         extractCron
-        (extractItemsLambda forSaleBucketId outputBucketId "for-sale.csv")
+        (extractItems forSaleBucketId extractForSalePageId)
+        defaultLambdaProfile
+
+-- aggregation
+
+      genericLambda
+        "catForSalePages"
+        (catPage forSalePagesBucketId outputBucketId "for-sale.csv")
         defaultLambdaProfile
 
       pass
 
 
-    extractItemsLambda
+    extractItems
       :: S3BucketId
-      -> S3BucketId
-      -> Text
+      -> LambdaId
       -> CwLambdaProgram
-    extractItemsLambda fromBuckedId toBucketId filename = \_ -> do
-      objs <- listS3Objects fromBuckedId $ \acc objs -> pure $ acc V.++ objs
-      (items :: Vector Item) <- V.mapMaybe eitherToMaybe <$> traverse (map (\ebs -> (first toS ebs) >>= A.eitherDecode) . getS3ObjectContent) objs
-      putS3ObjectContent (S3Object toBucketId $ S3Key filename) . Csv.encodeByName Item.headers $ V.toList items
+    extractItems fromBuckedId extractPageId = \_ -> do
+      -- uploadS3Multipart
+
+      listS3Objects fromBuckedId $ \acc@(Sum n) objs -> do
+        invokeLambda extractPageId (n, objs)
+        pure $ acc <> Sum (1 :: Int)
       success "success!"
 
+    extractPage
+      :: S3BucketId
+      -> GenericLambdaProgram
+    extractPage toBucketId = \json -> do
+      case A.eitherDecode $ A.encode json of
+        Left err -> argumentsError $ toS err
+        Right (page :: Int, objs) -> do
+          (items :: [Item]) <- rights <$> traverse (map (\ebs -> (first toS ebs) >>= A.eitherDecode) . getS3ObjectContent) objs
+          let opts = Csv.defaultEncodeOptions { Csv.encIncludeHeader = page == 0 }
+          putS3ObjectContent (S3Object toBucketId . S3Key . show $ page + 1) $ Csv.encodeByNameWith opts Item.headers items
+          success "success!"
 
-    fetchLambda
+
+
+
+    fetch
       :: LambdaId
       -> CwLambdaProgram
-    fetchLambda fetchLocationLambdaId = \_ -> do
-      traverse_ (invokeLambda fetchLocationLambdaId) searchLocations
+    fetch fetchLocationId = \_ -> do
+      traverse_ (invokeLambda fetchLocationId) searchLocations
       success "success!"
 
 
-    fetchLocationLambda
+    fetchLocation
       :: S3BucketId
       -> Text
       -> GenericLambdaProgram
-    fetchLocationLambda bucketId controllerName = \json -> do
+    fetchLocation bucketId controllerName = \json -> do
       case A.eitherDecode $ A.encode json of
         Left err -> argumentsError $ toS err
         Right sl@SearchLocation{ city, state } -> do
@@ -166,3 +205,21 @@ main = withConfig config
           say $ "persisted " <> show persistedPages <> " pages for: '" <> criteria <> "'"
 
           success "success!"
+
+
+    catPage
+      :: S3BucketId
+      -> S3BucketId
+      -> Text
+      -> GenericLambdaProgram
+    catPage fromBuckedId outputBucketId filename =
+      -- create multipart upload
+
+      listS3Objects fromBuckedId $ \acc@(Sum n) objs -> do
+
+        -- upload all parts sequentially
+
+        pure $ acc <> Sum (1 :: Int)
+
+      -- complete the multipart upload
+
