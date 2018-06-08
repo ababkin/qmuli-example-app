@@ -20,8 +20,7 @@ import           Qi                          (withConfig)
 import           Qi.Config.AWS.CW            (CwEventsRuleProfile (ScheduledEventProfile))
 import           Qi.Config.AWS.Lambda        (LambdaMemorySize (..),
                                               lpMemorySize, lpTimeoutSeconds)
-import           Qi.Config.AWS.S3            (S3Key (S3Key),
-                                              S3Object (S3Object))
+import           Qi.Config.AWS.S3            (S3Key (S3Key), S3Object (..))
 import           Qi.Config.Identifier        (LambdaId, S3BucketId)
 import           Qi.Program.Config.Interface (ConfigProgram, cwEventLambda,
                                               genericLambda, s3Bucket)
@@ -29,8 +28,9 @@ import           Qi.Program.Lambda.Interface (CwLambdaProgram,
                                               GenericLambdaProgram,
                                               LambdaProgram, getS3ObjectContent,
                                               invokeLambda, listS3Objects,
+                                              multipartS3Upload,
                                               putS3ObjectContent, runServant,
-                                              say)
+                                              say, uploadS3Chunk)
 import           Qi.Util                     (argumentsError, success)
 import qualified Realtor.Api                 as Api
 import           Realtor.Item                (Item (Item))
@@ -150,7 +150,7 @@ main = withConfig config
 
       genericLambda
         "catForSalePages"
-        (catPage forSalePagesBucketId outputBucketId "for-sale.csv")
+        (catPages forSalePagesBucketId outputBucketId "for-sale.csv")
         defaultLambdaProfile
 
       pass
@@ -161,8 +161,6 @@ main = withConfig config
       -> LambdaId
       -> CwLambdaProgram
     extractItems fromBuckedId extractPageId = \_ -> do
-      -- uploadS3Multipart
-
       listS3Objects fromBuckedId $ \acc@(Sum n) objs -> do
         invokeLambda extractPageId (n, objs)
         pure $ acc <> Sum (1 :: Int)
@@ -207,19 +205,37 @@ main = withConfig config
           success "success!"
 
 
-    catPage
+    catPages
       :: S3BucketId
       -> S3BucketId
       -> Text
       -> GenericLambdaProgram
-    catPage fromBuckedId outputBucketId filename =
+    catPages sourceBuckedId sinkBucketId filename = \_ -> do
       -- create multipart upload
+      multipartS3Upload sinkS3Object $ \_ uploadId -> do
+        map V.toList $ listS3Objects sourceBuckedId $ \acc objs -> do
+          -- upload all parts sequentially
+          results <- for objs $ \obj@S3Object{_s3oKey = S3Key k} -> do
+            case readMaybe $ toS k of
+              Just i ->
+                uploadS3Chunk sinkS3Object uploadId (i, obj)
+              Nothing ->
+                pure Nothing
 
-      listS3Objects fromBuckedId $ \acc@(Sum n) objs -> do
+          pure $ acc <> catMaybesV results
 
-        -- upload all parts sequentially
+      success "success!"
 
-        pure $ acc <> Sum (1 :: Int)
+      where
+        catMaybesV =
+          let
+            f acc (Just x) = acc V.++ (V.singleton x)
+            f acc Nothing  = acc
+          in
+            V.foldl' f V.empty
+
+
+        sinkS3Object = S3Object sinkBucketId $ S3Key filename
 
       -- complete the multipart upload
 
