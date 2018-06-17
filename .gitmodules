@@ -1,0 +1,3 @@
+[submodule "qmuli"]
+	path = qmuli
+	url = git@github.com:ababkin/qmuli.git

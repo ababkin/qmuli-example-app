@@ -1,4 +1,4 @@
-name: realty-data-collect
+name: realty
 version: "0.0.1"
 description: Realty data collection
 maintainer: Alex Babkin
@@ -38,10 +38,10 @@ library:
   source-dirs: lib
 
 executables:
-  realty-data-collect:
+  realty:
     main: Main.hs
     source-dirs: app
     dependencies:
-      - realty-data-collect
+      - realty
     
 

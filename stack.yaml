@@ -1,8 +1,8 @@
-resolver: nightly-2018-06-02
+resolver: nightly-2018-06-17
 
 packages:
-- .
-- qmuli
+- 'realty-project'
+- 'qmuli'
 - location:
     git: https://github.com/ababkin/system-extra.git
     commit: 8f3f93d5172744a8dedde57693c2b5d3c15f745c
@@ -22,7 +22,7 @@ flags: {}
 extra-package-dbs: []
 
 ghc-options:
-  "realty-data-collect": 
+  "realty": 
     # -funfolding-use-threshold=16 -O2 -optc-O3
     -O0
     -Wall
