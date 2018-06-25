@@ -15,8 +15,6 @@ import           Data.Default                (def)
 import           Data.Either.Extra           (eitherToMaybe)
 import           Data.Hashable               (hash)
 import qualified Data.Text                   as T
-import           Data.Vector                 (Vector)
-import qualified Data.Vector                 as V
 import           Protolude                   hiding (state)
 import           Qi                          (withConfig)
 import           Qi.Config.AWS.CW            (CwEventsRuleProfile (ScheduledEventProfile))
@@ -26,14 +24,11 @@ import           Qi.Config.AWS.S3            (S3Key (S3Key), S3Object (..))
 import           Qi.Config.Identifier        (LambdaId, S3BucketId)
 import           Qi.Program.Config.Interface (ConfigProgram, cwEventLambda,
                                               genericLambda, s3Bucket)
-import           Qi.Program.Lambda.Interface (CwLambdaProgram,
-                                              GenericLambdaProgram,
-                                              LambdaProgram, getS3ObjectContent,
-                                              invokeLambda, listS3Objects,
-                                              multipartS3Upload,
+import           Qi.Program.Lambda.Interface (CwLambdaProgram, LambdaProgram,
+                                              getS3ObjectContent, invokeLambda,
+                                              listS3Objects, multipartS3Upload,
                                               putS3ObjectContent, runServant,
                                               say, uploadS3Chunk)
-import           Qi.Util                     (argumentsError, success)
 import qualified Realtor.Api                 as Api
 import           Realtor.Item                (Item (Item))
 import qualified Realtor.Item                as Item
@@ -176,21 +171,15 @@ main = withConfig config
       listS3Objects fromBuckedId $ \acc@(Sum n) objs -> do
         invokeLambda extractPageId (n, objs)
         pure $ acc <> Sum (1 :: Int)
-      success "success!"
+      pure "success!"
 
     extractPage
       :: S3BucketId
-      -> GenericLambdaProgram
-    extractPage toBucketId = \json -> do
-      case A.eitherDecode $ A.encode json of
-        Left err -> argumentsError $ toS err
-        Right (page :: Int, objs) -> do
-          (items :: [Item]) <- rights <$> traverse (map (\ebs -> (first toS ebs) >>= A.eitherDecode) . getS3ObjectContent) objs
-          let opts = Csv.defaultEncodeOptions { Csv.encIncludeHeader = page == 0 }
-          putS3ObjectContent (S3Object toBucketId . S3Key . show $ page + 1) $ Csv.encodeByNameWith opts Item.headers items
-          success "success!"
-
-
+      -> ((Int, [S3Object]) -> LambdaProgram ())
+    extractPage toBucketId = \(page, objs) -> do
+      (items :: [Item]) <- rights <$> traverse (map (\ebs -> (first toS ebs) >>= A.eitherDecode) . getS3ObjectContent) objs
+      let opts = Csv.defaultEncodeOptions { Csv.encIncludeHeader = page == 0 }
+      putS3ObjectContent (S3Object toBucketId . S3Key . show $ page + 1) $ Csv.encodeByNameWith opts Item.headers items
 
 
     fetch
@@ -198,33 +187,29 @@ main = withConfig config
       -> CwLambdaProgram
     fetch fetchLocationId = \_ -> do
       traverse_ (invokeLambda fetchLocationId) searchLocations
-      success "success!"
+      pure "success!"
 
 
     fetchLocation
       :: S3BucketId
       -> Text
-      -> GenericLambdaProgram
-    fetchLocation bucketId controllerName = \json -> do
-      case A.eitherDecode $ A.encode json of
-        Left err -> argumentsError $ toS err
-        Right sl@SearchLocation{ city, state } -> do
-          let criteria = searchCriteriaLiteral sl
-              params = searchParams criteria controllerName
-          persistedPages <- persistPages Api.fetch params (persistItem bucketId) 1
-          say $ "persisted " <> show persistedPages <> " pages for: '" <> criteria <> "'"
+      -> (SearchLocation -> LambdaProgram ())
+    fetchLocation bucketId controllerName = \sl@SearchLocation{ city, state } -> do
+      let criteria = searchCriteriaLiteral sl
+          params = searchParams criteria controllerName
+      persistedPages <- persistPages Api.fetch params (persistItem bucketId) 1
+      say $ "persisted " <> show persistedPages <> " pages for: '" <> criteria <> "'"
 
-          success "success!"
 
 
     catPages
       :: S3BucketId
       -> S3BucketId
       -> Text
-      -> GenericLambdaProgram
+      -> (() -> LambdaProgram ())
     catPages sourceBuckedId sinkBucketId filename = \_ -> do
 
-      parts <- map V.toList $ listS3Objects sourceBuckedId $ \(!acc) (!objs) -> do
+      parts <- listS3Objects sourceBuckedId $ \(!acc) (!objs) -> do
         -- upload all parts sequentially
         results <- for objs $ \obj@S3Object{_s3oKey = S3Key k} -> do
           case readMaybe $ toS k of
@@ -234,12 +219,10 @@ main = withConfig config
             Nothing ->
               pure Nothing
 
-        pure $ acc <> catMaybesV results
+        pure $ acc <> catMaybes results
 
 
       putS3ObjectContent sinkS3Object . foldMap snd $ sort parts
-
-      success "success!"
 
 {-
       -- create multipart upload
@@ -258,13 +241,6 @@ main = withConfig config
       success "success!"
 -}
       where
-        catMaybesV =
-          let
-            f acc (Just x) = acc V.++ (V.singleton x)
-            f acc Nothing  = acc
-          in
-            V.foldl' f V.empty
-
 
         sinkS3Object = S3Object sinkBucketId $ S3Key filename
 

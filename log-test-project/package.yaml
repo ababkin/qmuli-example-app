@@ -1,6 +1,5 @@
-name: realty
+name: log-test
 version: "0.0.1"
-description: Realty data collection
 maintainer: Alex Babkin
 stability: experimental
 license: MIT
@@ -11,33 +10,21 @@ default-extensions:
     
 dependencies:
   - aeson
-  - attoparsec
   - base
-  - base64-bytestring
-  - cassava
   - data-default
-  - extra
-  - hashable
-  - http-client
-  - http-client-tls
   - lens
-  - qmuli
   - protolude
-  - scientific
-  - servant
-  - servant-client
-  - text
-  - unordered-containers
-  - vector
+  - qmuli
+
 
 library:
   source-dirs: lib
 
 executables:
-  realty:
+  log-test:
     main: Main.hs
     source-dirs: app
     dependencies:
-      - realty
+      - log-test
     
 

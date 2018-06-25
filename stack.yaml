@@ -1,17 +1,20 @@
-resolver: nightly-2018-06-17
+resolver: nightly-2018-06-23
 
 packages:
 - 'realty-project'
+- 'log-test-project'
 - 'qmuli'
 - location:
     git: https://github.com/ababkin/system-extra.git
     commit: 8f3f93d5172744a8dedde57693c2b5d3c15f745c
   extra-dep: true
 - location:
-    git: https://github.com/brendanhay/amazonka.git
+    git: https://github.com/ababkin/amazonka.git
     commit: 248f7b2a7248222cc21cef6194cd1872ba99ac5d
     subdirs:
       - amazonka
+      - amazonka-lex-models 
+      - core
   extra-dep: true
 
 
@@ -23,6 +26,14 @@ extra-package-dbs: []
 
 ghc-options:
   "realty": 
+    # -funfolding-use-threshold=16 -O2 -optc-O3
+    -O0
+    -Wall
+    -Wno-unused-imports 
+    -Wno-unused-matches 
+    -Wno-unused-do-bind
+    -Werror
+  "log-test": 
     # -funfolding-use-threshold=16 -O2 -optc-O3
     -O0
     -Wall

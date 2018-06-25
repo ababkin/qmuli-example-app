@@ -38,17 +38,6 @@ fetch
 
 fetch = client api
 
--- | Simple data type to represent the target of HTTP requests
---   for servant's automatically-generated clients.
-data BaseUrl = BaseUrl
-  { baseUrlScheme :: Scheme -- ^ URI scheme to use
-  , baseUrlHost   :: [Char]   -- ^ host (eg "haskell.org")
-  , baseUrlPort   :: Int      -- ^ port (eg 80)
-  , baseUrlPath   :: [Char]   -- ^ path (eg "/a/b/c")
-  }
-
-
-
 
 {-
 curl 'https://www.realtor.com/pagination_result.json' \
